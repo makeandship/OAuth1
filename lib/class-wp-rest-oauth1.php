@@ -664,14 +664,25 @@ class WP_REST_OAuth1 {
 		$consumer_signature = rawurldecode( $params['oauth_signature'] );
 		unset( $params['oauth_signature'] );
 
+		$this->debug_log('params before');
+		$this->debug_log(print_r($params,true));
+
 		// normalize parameter key/values
-		array_walk_recursive( $params, array( $this, 'normalize_parameters' ) );
+		// disabled since this is not the behaviour used by node-oauth
+		// array_walk_recursive( $params, array( $this, 'normalize_parameters' ) );
 
 		// sort parameters
 		if ( ! uksort( $params, 'strcmp' ) )
 			return new WP_Error( 'json_oauth1_failed_parameter_sort', __( 'Invalid Signature - failed to sort parameters', 'rest_oauth1' ), array( 'status' => 401 ) );
 
+		$this->debug_log('params after');
+		$this->debug_log(print_r($params,true));
+
 		$query_string = $this->create_signature_string( $params );
+
+		$this->debug_log('base_request_uri before encode:'.get_home_url( null, $request_path ));
+		$this->debug_log('base_request_uri:'.$base_request_uri);
+		$this->debug_log('query_string:'.$query_string);
 
 		$token = (array) $token;
 		$string_to_sign = $http_method . '&' . $base_request_uri . '&' . $query_string;
@@ -694,7 +705,18 @@ class WP_REST_OAuth1 {
 				return new WP_Error( 'json_oauth1_invalid_signature_method', __( 'Signature method is invalid', 'rest_oauth1' ), array( 'status' => 401 ) );
 		}
 
+		// echo 'string_to_sign:'.$string_to_sign.'<br>';
+		// echo 'key:'.$key.'<br>';
+
+		$this->debug_log('string_to_sign:'.$string_to_sign);
+		$this->debug_log('key:'.$key);
+
 		$signature = base64_encode( hash_hmac( $hash_algorithm, $string_to_sign, $key, true ) );
+
+		// echo 'signature:'.$signature.'<br>';
+		// echo 'consumer_signature:'.$consumer_signature.'<br>';
+		$this->debug_log('signature:'.$signature);
+		$this->debug_log('consumer_signature:'.$consumer_signature);
 
 		if ( ! hash_equals( $signature, $consumer_signature ) ) {
 			return new WP_Error( 'json_oauth1_signature_mismatch', __( 'OAuth signature does not match', 'rest_oauth1' ), array( 'status' => 401 ) );
@@ -710,8 +732,15 @@ class WP_REST_OAuth1 {
 	 * @param  array  $params Array of query parameters
 	 * @return string         Signature string
 	 */
+
 	public function create_signature_string( $params ) {
-		return implode( '%26', $this->join_with_equals_sign( $params ) ); // join with ampersand
+		// TODO: shold technically be making encoded key=value pairs
+		// then sorting on the key
+		ksort($params);
+		$joined = $this->join_with_equals_sign($params);
+		$parameters = implode( '&', $joined );
+		$parameters = rawurlencode($parameters);
+		return $parameters;
 	}
 
 	/**
@@ -726,13 +755,16 @@ class WP_REST_OAuth1 {
 	public function join_with_equals_sign( $params, $query_params = array(), $key = '' ) {
 		foreach ( $params as $param_key => $param_value ) {
 			if ( is_array( $param_value ) ) {
+				if ( $key ) {
+					$param_key = $key . '[' . $param_key . ']'; // Handle multi-dimensional array
+				}
 				$query_params = $this->join_with_equals_sign( $param_value, $query_params, $param_key );
 			} else {
 				if ( $key ) {
 					$param_key = $key . '[' . $param_key . ']'; // Handle multi-dimensional array
 				}
-				$string = $param_key . '=' . $param_value; // join with equals sign
-				$query_params[] = urlencode( $string );
+				$string = rawurlencode($param_key) . '=' . rawurlencode($param_value);
+				$query_params[] = $string;
 			}
 		}
 		return $query_params;
@@ -794,4 +826,12 @@ class WP_REST_OAuth1 {
 	protected static function urlencode_rfc3986( $value ) {
 		return str_replace( array( '+', '%7E' ), array( ' ', '~' ), rawurlencode( $value ) );
 	}
+
+	function debug_log($log) {
+		if ( WP_DEBUG ) {
+			file_put_contents('wp-rest-oauth1.log', PHP_EOL . $log, FILE_APPEND);
+		}
+	}
 }
+
+
