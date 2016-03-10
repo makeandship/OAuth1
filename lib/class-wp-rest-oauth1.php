@@ -669,7 +669,7 @@ class WP_REST_OAuth1 {
 		// array_walk_recursive( $params, array( $this, 'normalize_parameters' ) );
 
 		// sort parameters
-		if ( ! uksort( $params, 'strcmp' ) )
+		if ( ! $this->recursive_uksort( $params ) )
 			return new WP_Error( 'json_oauth1_failed_parameter_sort', __( 'Invalid Signature - failed to sort parameters', 'rest_oauth1' ), array( 'status' => 401 ) );
 
 		$query_string = $this->create_signature_string( $params );
@@ -702,6 +702,16 @@ class WP_REST_OAuth1 {
 		}
 
 		return true;
+	}
+
+	function recursive_uksort(&$array){
+		if(!is_array($array)) {
+	    	return;
+	    }
+	    foreach($array as &$element) {
+	        $this->recursive_uksort($element);
+	    }
+	    return uksort( $array, 'strcmp' );
 	}
 
 	/**
